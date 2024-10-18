@@ -1,114 +1,67 @@
-// Load the selected image onto canvas
-const fileInput = document.getElementById('fileInput');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-let imageFile;
+const express = require('express');
+const multer = require('multer');
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
-fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) {
-        imageFile = file;
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            const img = new Image();
-            img.onload = function() {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+const app = express();
+const upload = multer({ dest: 'uploads/' });
+
+const subscriptionKey = '0e48197bd7664f0dbc07cf806299a132';
+const endpoint = 'https://flowe32.cognitiveservices.azure.com/';
+
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.urlencoded({ extended: true }));
+
+app.post('/analyze', upload.single('flowerImage'), async (req, res) => {
+    const imagePath = req.file.path;
+
+    try {
+        const imageData = fs.readFileSync(imagePath);
+
+        const azureResponse = await axios.post(
+            `${endpoint}/vision/v3.2/analyze?visualFeatures=Description`,
+            imageData,
+            {
+                headers: {
+                    'Ocp-Apim-Subscription-Key': subscriptionKey,
+                    'Content-Type': 'application/octet-stream'
+                }
             }
-            img.src = event.target.result;
-        }
-        reader.readAsDataURL(file);
+        );
+
+        const description = azureResponse.data.description.captions[0].text;
+
+        res.send(`
+            <html>
+            <head>
+                <title>Flower Recognition Result</title>
+                <style>
+                    body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+                    img { max-width: 100%; height: auto; margin-top: 20px; }
+                </style>
+            </head>
+            <body>
+                <h1>Flower Recognition Result</h1>
+                <p><strong>Description:</strong> ${description}</p>
+                <img src="/uploads/${req.file.filename}" alt="Uploaded Flower Image">
+                <br><br>
+                <a href="/">Upload another image</a>
+            </body>
+            </html>
+        `);
+
+        fs.unlinkSync(imagePath);
+
+    } catch (error) {
+        console.error("Error analyzing image:", error);
+        res.status(500).send("Error analyzing image. Please try again.");
     }
 });
-/*
-// Azure endpoints and keys
-const visionEndpoint = 'https://documentscannervision.cognitiveservices.azure.com/vision/v3.2/analyze?visualFeatures=objects';
-const formRecognizerEndpoint = 'https://documentocr12.cognitiveservices.azure.com/formrecognizer/v2.1-preview.2/layout/analyze';
-const subscriptionKey = 'ba234200479c495db00776e3147e6d6e';
 
-document.getElementById('detectBtn').addEventListener('click', async () => {
-    if (!imageFile) {
-        alert('Please upload an image.');
-        return;
-    }
+app.use('/uploads', express.static('uploads'));
 
-    // Call Azure Vision API for document detection
-    const imgBlob = await fileToBlob(imageFile);
-    const result = await detectDocument(imgBlob);
-    if (result) {
-        // Process detected bounding box and draw it on the canvas
-        drawBoundingBox(result.objects);
-    }
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
 });
-
-document.getElementById('savePDFBtn').addEventListener('click', () => {
-    const link = document.createElement('a');
-    link.download = 'document.pdf';
-    link.href = canvas.toDataURL('application/pdf');
-    link.click();
-});
-
-async function detectDocument(imageBlob) {
-    const headers = {
-        'Ocp-Apim-Subscription-Key': subscriptionKey,
-        'Content-Type': 'application/octet-stream',
-    };
-
-    const response = await fetch(visionEndpoint, {
-        method: 'POST',
-        headers: headers,
-        body: imageBlob,
-    });
-    return await response.json();
-}
-
-async function fileToBlob(file) {
-    return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.readAsArrayBuffer(file);
-    });
-}
-
-function drawBoundingBox(objects) {
-    // Loop through objects and draw bounding box (if documents detected)
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(imageFile, 0, 0, canvas.width, canvas.height);
-    
-    objects.forEach((obj) => {
-        if (obj.object === 'document') {
-            const { x, y, w, h } = obj.rectangle;
-            ctx.strokeStyle = 'red';
-            ctx.lineWidth = 3;
-            ctx.strokeRect(x, y, w, h);
-        }
-    });
-}
-
-// Optional OCR Feature
-async function extractText(imageBlob) {
-    const headers = {
-        'Ocp-Apim-Subscription-Key': subscriptionKey,
-        'Content-Type': 'application/octet-stream',
-    };
-
-    const response = await fetch(formRecognizerEndpoint, {
-        method: 'POST',
-        headers: headers,
-        body: imageBlob,
-    });
-
-    const ocrResult = await response.json();
-    document.getElementById('ocrText').textContent = formatOCRResult(ocrResult);
-}
-
-function formatOCRResult(ocrResult) {
-    let extractedText = '';
-    ocrResult.analyzeResult.readResults.forEach(page => {
-        page.lines.forEach(line => {
-            extractedText += line.text + '\n';
-        });
-    });
-    return extractedText;
-}
-*/
